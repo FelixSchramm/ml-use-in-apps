@@ -25,9 +25,9 @@ P[sdk]='firebase|crashlytics|amplitude|mixpanel|segment|appsflyer|adjust|branch\
 P[permissions]='android\.permission\.[A-Z_]+|requestPermissions|PermissionsAndroid|NSCameraUsageDescription|NSLocation[A-Za-z]*UsageDescription|ACCESS_FINE_LOCATION|READ_CONTACTS|RECORD_AUDIO'
 
 if command -v rg >/dev/null; then
-  search() { rg -n -o -i --no-heading --no-ignore --hidden -a -M 300 -e "$1" "$TARGET" 2>/dev/null || true; }
+  search() { rg -H -n -o -i --no-heading --no-ignore --hidden -a -M 300 -e "$1" "$TARGET" 2>/dev/null || true; }
 else
-  search() { grep -rnoiaE "$1" "$TARGET" 2>/dev/null || true; }
+  search() { grep -rHnoiaE "$1" "$TARGET" 2>/dev/null || true; }
 fi
 
 run() {
@@ -38,8 +38,20 @@ run() {
   if [[ -z "$result" ]]; then
     echo "(keine Treffer)"
   else
-    # Treffer pro Wert verdichten, damit die Übersicht lesbar bleibt
-    echo "$result" | awk -F: '{v=$NF; c[v]++; if(!(v in f)) f[v]=$1":"$2} END{for(v in c) printf "%5d  %-60s  erste Stelle: %s\n", c[v], v, f[v]}' | sort -rn | head -n 80
+    # Treffer pro Wert verdichten, damit die Übersicht lesbar bleibt.
+    # Zeilenformat: <datei>:<zeile>:<treffer>. Nur an den ersten beiden
+    # Doppelpunkten trennen, damit Treffer wie "https://..." vollständig bleiben.
+    # Begrenzung per awk statt head: awk liest die Eingabe vollständig, sodass
+    # sort kein SIGPIPE bekommt und pipefail das Skript nicht abbricht.
+    printf '%s\n' "$result" | awk '
+      {
+        i = index($0, ":"); file = substr($0, 1, i - 1); rest = substr($0, i + 1)
+        j = index(rest, ":"); line = substr(rest, 1, j - 1); v = substr(rest, j + 1)
+        c[v]++
+        if (!(v in f)) f[v] = file ":" line
+      }
+      END { for (v in c) printf "%5d  %-60s  erste Stelle: %s\n", c[v], v, f[v] }
+    ' | sort -rn | awk 'NR <= 80'
   fi
   echo
 }
